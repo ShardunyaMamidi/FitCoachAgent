@@ -32,12 +32,11 @@ load_dotenv()
 
 # --- Configuration (read from environment variables) --------------------------
 #
-#   GEMINI_API_KEY : your Google AI Studio API key (required).
-#                   Get one at aistudio.google.com/apikey
+#   GOOGLE_API_KEY : your Google AI Studio API key (required).
 #   MODEL_ID       : which Gemini model to use.
 #                   "gemini-2.0-flash" is fast and has a generous free tier.
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
-MODEL_ID = os.environ.get("MODEL_ID", "gemini-2.0-flash")
+GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY")
+MODEL_ID = os.environ.get("MODEL_ID", "gemini-3.1-flash-lite")
 
 MAX_TOKENS = int(os.environ.get("MAX_TOKENS", "1024"))
 
@@ -45,12 +44,12 @@ MAX_TOKENS = int(os.environ.get("MAX_TOKENS", "1024"))
 @functools.lru_cache(maxsize=1)
 def _client() -> genai.Client:
     """Build the Gemini client once and reuse it."""
-    if not GEMINI_API_KEY:
+    if not GOOGLE_API_KEY:
         raise RuntimeError(
-            "GEMINI_API_KEY is not set. Get one at aistudio.google.com/apikey "
+            "GOOGLE_API_KEY is not set. Get one at aistudio.google.com/apikey "
             "and add it to your .env file."
         )
-    return genai.Client(api_key=GEMINI_API_KEY)
+    return genai.Client(api_key=GOOGLE_API_KEY)
 
 
 def _to_gemini_history(messages: list[dict]) -> list[types.Content]:
@@ -85,8 +84,7 @@ def answer(messages: list[dict]) -> str:
         model=MODEL_ID,
         contents=_to_gemini_history(messages),
         config=types.GenerateContentConfig(
-            system_instruction=FITNESS_SYSTEM_PROMPT,
-            max_output_tokens=MAX_TOKENS,
+            system_instruction=FITNESS_SYSTEM_PROMPT
         ),
     )
     return response.text
