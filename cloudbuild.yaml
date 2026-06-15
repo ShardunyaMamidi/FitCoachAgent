@@ -1,4 +1,5 @@
 steps:
+  # Step 1: Build and deploy the container image
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     args:
       - gcloud
@@ -8,8 +9,18 @@ steps:
       - --source=.
       - --region=asia-south1
       - --allow-unauthenticated
-      - --set-env-vars=GOOGLE_API_KEY=$$GOOGLE_API_KEY,MODEL_ID=gemini-3.1-flash-lite,MAX_TOKENS=1024
+      - --update-env-vars=MODEL_ID=gemini-3.1-flash-lite,MAX_TOKENS=1024
 
+  # Step 2: Set the API key separately using the secret value
+  # --update-env-vars runs in a shell so $$GOOGLE_API_KEY expands correctly
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        gcloud run services update fitness-qa \
+          --region=asia-south1 \
+          --update-env-vars=GOOGLE_API_KEY=$$GOOGLE_API_KEY
     secretEnv: ['GOOGLE_API_KEY']
 
 availableSecrets:
