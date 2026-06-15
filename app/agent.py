@@ -1,86 +1,92 @@
 """
-The AGENT CORE — the only place that talks to Claude.
+The AGENT CORE — the only place that talks to the LLM.
 
 This module is deliberately small and isolated. The web layer (main.py) calls
-`answer(messages)` and gets back a string. It does NOT know about Vertex, model
-IDs, or prompts. That separation is what makes Phase 2 (RAG) easy: we'll add a
-retrieval step *inside this file* without touching the web layer at all.
+`answer(messages)` and gets back a string. It does NOT know about model
+IDs, or prompts. That separation means swapping the LLM provider (Vertex AI,
+Anthropic, Gemini) only ever touches THIS file.
 
 KEY AI-AGENT CONCEPT — the API is stateless:
-    Claude does not remember previous turns. Every call sends the *entire*
+    The LLM does not remember previous turns. Every call sends the *entire*
     conversation history (the `messages` list). "Memory" is just us resending
     that list each time. Here, the browser keeps the history and sends it on every
     request, so this function stays stateless — which is also exactly what a
     serverless host like Cloud Run wants.
+
+NOTE ON MESSAGE FORMAT:
+    Our API uses {"role": "user"/"assistant", "content": "..."}.
+    Gemini uses  {"role": "user"/"model",      "parts": [{"text": "..."}]}.
+    We convert between them inside answer() so the rest of the app is unaware.
 """
 
 import os
 import functools
 
 from dotenv import load_dotenv
-from anthropic import AnthropicVertex
+from google import genai
+from google.genai import types
 
 from .prompts import FITNESS_SYSTEM_PROMPT
 
 load_dotenv()
 
 # --- Configuration (read from environment variables) --------------------------
-# We read config from env vars so the SAME code runs locally and on Cloud Run —
-# only the values differ. This is a core twelve-factor / cloud habit.
 #
-#   GOOGLE_CLOUD_PROJECT : your GCP project ID (required).
-#   VERTEX_REGION        : "global" is recommended (best availability, no premium).
-#   MODEL_ID             : which Claude model to use. "claude-haiku-4-5@20251001" is
-#                          cheap and fast; swap to "claude-opus-4-8" for most capable.
-PROJECT_ID = os.environ.get("GOOGLE_CLOUD_PROJECT")
-VERTEX_REGION = os.environ.get("VERTEX_REGION", "global")
-MODEL_ID = os.environ.get("MODEL_ID", "claude-haiku-4-5@20251001")
+#   GEMINI_API_KEY : your Google AI Studio API key (required).
+#                   Get one at aistudio.google.com/apikey
+#   MODEL_ID       : which Gemini model to use.
+#                   "gemini-2.0-flash" is fast and has a generous free tier.
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+MODEL_ID = os.environ.get("MODEL_ID", "gemini-2.0-flash")
 
-# Cap on how long a single reply can be. Plenty for a chat answer; keeps cost and
-# latency bounded. (Tokens ≈ word-pieces; ~1024 tokens is a few solid paragraphs.)
 MAX_TOKENS = int(os.environ.get("MAX_TOKENS", "1024"))
 
 
 @functools.lru_cache(maxsize=1)
-def _client() -> AnthropicVertex:
-    """
-    Build the Vertex client once and reuse it (lru_cache makes this a singleton).
-
-    We build it lazily — on first use rather than at import time — so that simply
-    importing this module doesn't fail if credentials aren't set up yet. The client
-    authenticates using Google's Application Default Credentials (ADC):
-      - Locally: the credentials from `gcloud auth application-default login`.
-      - On Cloud Run: the service's attached service account.
-    """
-    if not PROJECT_ID:
+def _client() -> genai.Client:
+    """Build the Gemini client once and reuse it."""
+    if not GEMINI_API_KEY:
         raise RuntimeError(
-            "GOOGLE_CLOUD_PROJECT is not set. Set it to your GCP project ID "
-            "(see .env.example) before starting the server."
+            "GEMINI_API_KEY is not set. Get one at aistudio.google.com/apikey "
+            "and add it to your .env file."
         )
-    return AnthropicVertex(project_id=PROJECT_ID, region=VERTEX_REGION)
+    return genai.Client(api_key=GEMINI_API_KEY)
+
+
+def _to_gemini_history(messages: list[dict]) -> list[types.Content]:
+    """
+    Convert our internal message format to Gemini's Content format.
+
+    Our format:  {"role": "user"/"assistant", "content": "text"}
+    Gemini needs: Content(role="user"/"model", parts=[Part(text="text")])
+
+    The role rename (assistant → model) is the key difference — Gemini calls
+    the AI's turns "model" instead of "assistant".
+    """
+    role_map = {"user": "user", "assistant": "model"}
+    return [
+        types.Content(
+            role=role_map[m["role"]],
+            parts=[types.Part(text=m["content"])],
+        )
+        for m in messages
+    ]
 
 
 def answer(messages: list[dict]) -> str:
     """
-    Send the conversation to Claude and return the assistant's reply text.
+    Send the conversation to Gemini and return the reply text.
 
-    `messages` is the full history, e.g.:
-        [{"role": "user", "content": "How do I start lifting?"},
-         {"role": "assistant", "content": "..."},
-         {"role": "user", "content": "Make it 3 days a week"}]
-
-    PHASE 2 HOOK: this is where retrieval will go. Before calling Claude, we'll
-    look up relevant snippets from your fitness documents and fold them into the
-    request (e.g. appended to the system prompt). The signature won't change, so
+    PHASE 2 HOOK: retrieval goes here. Inject retrieved snippets into the
+    system prompt before calling the model. The signature won't change, so
     main.py and the browser stay untouched.
     """
-    response = _client().messages.create(
+    response = _client().models.generate_content(
         model=MODEL_ID,
-        max_tokens=MAX_TOKENS,
-        system=FITNESS_SYSTEM_PROMPT,
-        messages=messages,
+        contents=_to_gemini_history(messages),
+        config=types.GenerateContentConfig(
+            system_instruction=FITNESS_SYSTEM_PROMPT,
+            max_output_tokens=MAX_TOKENS,
+        ),
     )
-
-    # A response's `content` is a list of typed blocks. For a normal text reply
-    # there's a single "text" block, but we join all text blocks to be safe.
-    return "".join(block.text for block in response.content if block.type == "text")
+    return response.text

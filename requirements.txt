@@ -2,9 +2,6 @@
 fastapi
 uvicorn[standard]
 
-# Anthropic SDK with the Vertex AI client (AnthropicVertex).
-# google-cloud-aiplatform pulls in the Google auth libraries the Vertex
-# client uses to authenticate against your GCP project.
-google-cloud-aiplatform
-anthropic[vertex]
+# Google Gen AI SDK — used to call Gemini via Google AI Studio API key.
+google-genai
 python-dotenv
