@@ -1,0 +1,9 @@
+# Keep the build context small and avoid copying local-only/secret files into the image.
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+.git/
+.gitignore
+*.md

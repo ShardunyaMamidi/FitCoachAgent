@@ -1,0 +1,10 @@
+# Web framework + ASGI server that runs it.
+fastapi
+uvicorn[standard]
+
+# Anthropic SDK with the Vertex AI client (AnthropicVertex).
+# google-cloud-aiplatform pulls in the Google auth libraries the Vertex
+# client uses to authenticate against your GCP project.
+google-cloud-aiplatform
+anthropic[vertex]
+python-dotenv
