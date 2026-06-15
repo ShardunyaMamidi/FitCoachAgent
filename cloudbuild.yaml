@@ -8,7 +8,9 @@ steps:
       - --source=.
       - --region=asia-south1
       - --allow-unauthenticated
-      - --set-env-vars=GOOGLE_API_KEY=$$GOOGLE_API_KEY,MODEL_ID=gemini-2.0-flash,MAX_TOKENS=1024
+      - --set-env-vars=GOOGLE_API_KEY=$$GOOGLE_API_KEY,MODEL_ID=gemini-3.1-flash-lite,MAX_TOKENS=1024
+
+    secretEnv: ['GOOGLE_API_KEY']
 
 availableSecrets:
   secretManager:
