@@ -1,0 +1,19 @@
+steps:
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    args:
+      - gcloud
+      - run
+      - deploy
+      - fitness-qa
+      - --source=.
+      - --region=asia-south1
+      - --allow-unauthenticated
+      - --set-env-vars=GOOGLE_API_KEY=$$GOOGLE_API_KEY,MODEL_ID=gemini-2.0-flash,MAX_TOKENS=1024
+
+availableSecrets:
+  secretManager:
+  - versionName: projects/$PROJECT_ID/secrets/GOOGLE_API_KEY/versions/latest
+    env: GOOGLE_API_KEY
+
+options:
+  logging: CLOUD_LOGGING_ONLY
